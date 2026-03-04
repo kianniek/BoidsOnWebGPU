@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { SimulationControls } from './controls.js';
+import { SimulationUI } from './ui.js';
 
 // Mutable parameters (can be changed via UI)
 let BOID_COUNT = 3000;
@@ -17,11 +17,12 @@ let scene, camera, renderer, boidInstancedMesh, controls;
 let boidPositions, boidVelocities, boidAccelerations;
 let nearestNeighbors, nearestNeighborsDist; // Store k nearest neighbors and their distances
 let nearestNeighbors_verify, nearestNeighborsDist_verify; // Verification arrays for brute force
-let simControls = null; // Will be initialized after DOM is ready
+let simUI = null; // Will be initialized after DOM is ready
 let verificationEnabled = true; // Toggle verification on/off
 let verificationErrors = 0;
 let lastFrameTime = Date.now();
 let frameCount = 0;
+let isSimulationRunning = true;
 
 // Pre-allocate math objects to save memory and CPU cycles
 const _matrix = new THREE.Matrix4();
@@ -567,7 +568,41 @@ function initControls ()
     }
   };
 
-  simControls = new SimulationControls(paramConfig);
+  const buttonConfig = {
+    'play-pause': {
+      iconStates: { playing: '⏸', paused: '▶' },
+      onClick: () => {
+        isSimulationRunning = !isSimulationRunning;
+        simUI.setButtonState('play-pause', isSimulationRunning ? 'playing' : 'paused');
+      }
+    },
+    'restart': {
+      icon: '↻',
+      onClick: () => {
+        reinitializeBoids(BOID_COUNT);
+        isSimulationRunning = true;
+        simUI.setButtonState('play-pause', 'playing');
+      }
+    },
+    'reset': {
+      icon: '↺',
+      onClick: () => {
+        BOID_COUNT = 3000;
+        SEPARATION_DISTANCE = 40;
+        ALIGNMENT_DISTANCE = 60;
+        COHESION_DISTANCE = 100;
+        MAX_SPEED = 4;
+        MAX_FORCE = 0.1;
+        K_NEIGHBORS = 20;
+        reinitializeBoids(BOID_COUNT);
+        isSimulationRunning = true;
+        simUI.setButtonState('play-pause', 'playing');
+      }
+    }
+  };
+
+  simUI = new SimulationUI(paramConfig, buttonConfig);
+  simUI.setButtonState('play-pause', isSimulationRunning ? 'playing' : 'paused');
 }
 
 let stepCount = 0;
@@ -578,8 +613,10 @@ function frame ()
 
   if ( controls ) controls.update();
 
-  // Update simulation
-  updateBoids();
+  // Update simulation (only if not paused)
+  if ( isSimulationRunning ) {
+    updateBoids();
+  }
   stepCount++;
 
   // Update instance matrices
@@ -608,13 +645,13 @@ function frame ()
   if ( elapsed > 500 )
   {
     const fps = Math.round( ( frameCount * 1000 ) / elapsed );
-    document.getElementById( 'info-fps' ).innerText = `FPS: ${fps}`;
+    simUI.setInfo( 'info-fps', `FPS: ${fps}` );
     frameCount = 0;
     lastFrameTime = now;
   }
 
-  document.getElementById( 'info-boids' ).innerText = `Boids: ${BOID_COUNT}`;
-  document.getElementById( 'info-step' ).innerText = `Step: ${stepCount}`;
+  simUI.setInfo( 'info-boids', `Boids: ${BOID_COUNT}` );
+  simUI.setInfo( 'info-step', `Step: ${stepCount}` );
   
   let statusText = 'CPU Simulation';
   if ( verificationEnabled )
@@ -625,8 +662,8 @@ function frame ()
   {
     statusText += ' | Verify: OFF';
   }
-  document.getElementById( 'info-app' ).innerText = statusText;
-  document.getElementById( 'info-gpu' ).innerText = 'Keys: P=Params, V=Verify';
+  simUI.setInfo( 'info-app', statusText );
+  simUI.setInfo( 'info-gpu', 'Keys: P=Params, V=Verify' );
 
   renderer.render( scene, camera );
 }
@@ -634,6 +671,6 @@ function frame ()
 initBoids();
 initThree();
 initControls();
-document.getElementById( 'info-app' ).innerText = 'Running...';
+simUI.setInfo( 'info-app', 'Running...' );
 frame();
 
